@@ -1,0 +1,52 @@
+name: Deploy Docker image over SSH
+description: Pull an image from GHCR and replace the running application container.
+
+inputs:
+  host:
+    description: destination host
+    required: true
+  username:
+    description: SSH username
+    required: true
+  ssh-key:
+    description: Private SSH key
+    required: true
+  image:
+    description: Full image reference, including tag
+    required: true
+  registry-user:
+    description: GHCR username
+    required: true
+  registry-token:
+    description: GHCR token with package read access
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Configure SSH
+      shell: bash
+      env:
+        SSH_PRIVATE_KEY: ${{ inputs.ssh-key }}
+        DEPLOY_HOST: ${{ inputs.host }}
+      run: |
+        install -m 700 -d ~/.ssh
+        printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+    - name: Pull and restart application container
+      shell: bash
+      env:
+        DEPLOY_HOST: ${{ inputs.host }}
+        DEPLOY_USER: ${{ inputs.username }}
+        IMAGE: ${{ inputs.image }}
+        REGISTRY_USER: ${{ inputs.registry-user }}
+        REGISTRY_TOKEN: ${{ inputs.registry-token }}
+      run: |
+        printf '%s' "$REGISTRY_TOKEN" | ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+          "docker login ghcr.io --username '$REGISTRY_USER' --password-stdin && \
+           docker pull '$IMAGE' && \
+           (docker rm --force citest-app >/dev/null 2>&1 || true) && \
+           docker run --detach --restart unless-stopped --name citest-app --publish 80:80 '$IMAGE'"
+  

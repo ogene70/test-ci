@@ -1,0 +1,43 @@
+name: Build and push image to GHCR
+description: Build the repository Dockerfile and publish the image to a container registry.
+
+
+
+inputs:
+  registry:
+    description: Container registry hostname
+    required: true
+  login:
+    description: GitHub username or organization used to authenticate with GHCR
+    required: true
+  password-or-key:
+    description: GitHub token or password for GHCR authentication
+    required: true
+  registry-repo:
+    description: GitHub owner or organization that owns the container image
+    required: true
+  container-name:
+    description: Image name
+    required: true
+  tag:
+    description: Image tag
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Log in to registry
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        REGISTRY_USER: ${{ inputs.login }}
+        REGISTRY_TOKEN: ${{ inputs.password-or-key }}
+      run: echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" --username "$REGISTRY_USER" --password-stdin
+
+    - name: Build and push image
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.registry }}/${{ inputs.registry-repo }}/${{ inputs.container-name }}:${{ inputs.tag }}
+      run: |
+        docker build --tag "$IMAGE" .
+        docker push "$IMAGE"

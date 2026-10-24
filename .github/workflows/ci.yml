@@ -1,0 +1,56 @@
+name: Build and deploy
+
+on:
+  push
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    name: Build and publish image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and push to GHCR
+        uses: ./.github/actions/connect-and-push-images
+        with:
+          registry: ghcr.io
+          registry-repo: ${{ github.repository_owner }}
+          container-name: ${{ github.event.repository.name }}
+          login: ${{ github.actor }}
+          password-or-key: ${{ secrets.PKG_MANAGER }}
+          tag: ${{ inputs.tag || github.sha }}
+
+  deploy:
+    
+    name: Deploy production
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy image over SSH
+        uses: ./.github/actions/deploy-image
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          ssh-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          image: ghcr.io/${{ github.repository }}:${{ inputs.tag || github.sha }}
+          registry-user: ${{ github.actor }}
+          registry-token: ${{ secrets.GITHUB_TOKEN }}
